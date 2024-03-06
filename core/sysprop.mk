@@ -36,30 +36,6 @@ define generate-common-build-props
     echo "# from generate-common-build-props" >> $(2);\
     echo "# These properties identify this partition image." >> $(2);\
     echo "####################################" >> $(2);\
-    $(if $(filter true,$(ZYGOTE_FORCE_64)),\
-        $(if $(filter vendor,$(1)),\
-            echo "ro.$(1).product.cpu.abilist=$(TARGET_CPU_ABI_LIST_64_BIT)" >> $(2);\
-            echo "ro.$(1).product.cpu.abilist32=" >> $(2);\
-            echo "ro.$(1).product.cpu.abilist64=$(TARGET_CPU_ABI_LIST_64_BIT)" >> $(2);\
-        )\
-    ,\
-        $(if $(filter system vendor odm,$(1)),\
-            echo "ro.$(1).product.cpu.abilist=$(TARGET_CPU_ABI_LIST)" >> $(2);\
-            echo "ro.$(1).product.cpu.abilist32=$(TARGET_CPU_ABI_LIST_32_BIT)" >> $(2);\
-            echo "ro.$(1).product.cpu.abilist64=$(TARGET_CPU_ABI_LIST_64_BIT)" >> $(2);\
-        )\
-    )\
-    echo "ro.$(1).build.date=`$(DATE_FROM_FILE)`" >> $(2);\
-    echo "ro.$(1).build.date.utc=`$(DATE_FROM_FILE) +%s`" >> $(2);\
-    echo "ro.$(1).build.fingerprint=$(BUILD_FINGERPRINT_FROM_FILE)" >> $(2);\
-    echo "ro.$(1).build.id=$(BUILD_ID)" >> $(2);\
-    echo "ro.$(1).build.tags=$(BUILD_VERSION_TAGS)" >> $(2);\
-    echo "ro.$(1).build.type=$(TARGET_BUILD_VARIANT)" >> $(2);\
-    echo "ro.$(1).build.version.incremental=$(BUILD_NUMBER_FROM_FILE)" >> $(2);\
-    echo "ro.$(1).build.version.release=$(PLATFORM_VERSION_LAST_STABLE)" >> $(2);\
-    echo "ro.$(1).build.version.release_or_codename=$(PLATFORM_VERSION)" >> $(2);\
-    echo "ro.$(1).build.version.sdk=$(PLATFORM_SDK_VERSION)" >> $(2);\
-    ';\
     $(if $(filter system,$(1)),\
         echo "ro.product.$(1).brand=$(PRODUCT_SYSTEM_BRAND)" >> $(2);\
         echo "ro.product.$(1).device=$(PRODUCT_SYSTEM_DEVICE)" >> $(2);\
@@ -68,11 +44,10 @@ define generate-common-build-props
         echo "ro.product.$(1).name=$(PRODUCT_SYSTEM_NAME)" >> $(2);\
       ,\
         echo "ro.product.$(1).brand=$(PRODUCT_BRAND)" >> $(2);\
-        echo "ro.product.$(1).device=$(TARGET_DEVICE)" >> $(2);\
+        echo "ro.product.$(1).device=$${TARGET_DEVICE:-$(TARGET_DEVICE)}" >> $(2);\
         echo "ro.product.$(1).manufacturer=$(PRODUCT_MANUFACTURER)" >> $(2);\
-        echo "ro.product.$(1).model=$(PRODUCT_MODEL)" >> $(2);\
-        echo "ro.product.$(1).name=$(TARGET_PRODUCT)" >> $(2);\
-        # Attestation specific properties for AOSP/GSI build running on device.
+        echo "ro.product.$(1).model=$${PRODUCT_MODEL:-$(PRODUCT_MODEL)}" >> $(2);\
+        echo "ro.product.$(1).name=$${TARGET_PRODUCT:-$(TARGET_PRODUCT)}" >> $(2);\
         if [ -n "$(strip $(PRODUCT_MODEL_FOR_ATTESTATION))" ]; then \
             echo "ro.product.model_for_attestation=$(PRODUCT_MODEL_FOR_ATTESTATION)" >> $(2);\
         fi; \
@@ -89,6 +64,33 @@ define generate-common-build-props
             echo "ro.product.manufacturer_for_attestation=$(PRODUCT_MANUFACTURER_FOR_ATTESTATION)" >> $(2);\
         fi; \
     )\
+    $(if $(filter true,$(ZYGOTE_FORCE_64)),\
+        $(if $(filter vendor,$(1)),\
+            echo "ro.$(1).product.cpu.abilist=$(TARGET_CPU_ABI_LIST_64_BIT)" >> $(2);\
+            echo "ro.$(1).product.cpu.abilist32=" >> $(2);\
+            echo "ro.$(1).product.cpu.abilist64=$(TARGET_CPU_ABI_LIST_64_BIT)" >> $(2);\
+        )\
+    ,\
+        $(if $(filter system vendor odm,$(1)),\
+            echo "ro.$(1).product.cpu.abilist=$(TARGET_CPU_ABI_LIST)" >> $(2);\
+            echo "ro.$(1).product.cpu.abilist32=$(TARGET_CPU_ABI_LIST_32_BIT)" >> $(2);\
+            echo "ro.$(1).product.cpu.abilist64=$(TARGET_CPU_ABI_LIST_64_BIT)" >> $(2);\
+        )\
+    )\
+    echo "ro.$(1).build.date=`$(DATE_FROM_FILE)`" >> $(2);\
+    echo "ro.$(1).build.date.utc=`$(DATE_FROM_FILE) +%s`" >> $(2);\
+    # Allow optional assignments for ARC forward-declarations (b/249168657)
+    # TODO: Remove any tag-related inconsistencies once the goals from
+    # go/arc-android-sigprop-changes have been achieved.
+    echo "ro.$(1).build.fingerprint?=$(BUILD_FINGERPRINT_FROM_FILE)" >> $(2);\
+    echo "ro.$(1).build.id?=$(BUILD_ID)" >> $(2);\
+    echo "ro.$(1).build.tags?=$(BUILD_VERSION_TAGS)" >> $(2);\
+    echo "ro.$(1).build.type=$(TARGET_BUILD_VARIANT)" >> $(2);\
+    echo "ro.$(1).build.version.incremental=$(BUILD_NUMBER_FROM_FILE)" >> $(2);\
+    echo "ro.$(1).build.version.release=$(PLATFORM_VERSION_LAST_STABLE)" >> $(2);\
+    echo "ro.$(1).build.version.release_or_codename=$(PLATFORM_VERSION)" >> $(2);\
+    echo "ro.$(1).build.version.sdk=$(PLATFORM_SDK_VERSION)" >> $(2);\
+    ';\
 
 endef
 
@@ -182,15 +184,8 @@ BUILD_VERSION_TAGS := $(subst $(space),$(comma),$(sort $(BUILD_VERSION_TAGS)))
 # BUILD_FINGERPRINT is used used to uniquely identify the combined build and
 # product; used by the OTA server.
 ifeq (,$(strip $(BUILD_FINGERPRINT)))
-  ifeq ($(strip $(HAS_BUILD_NUMBER)),false)
-    BF_BUILD_NUMBER := $(BUILD_USERNAME)$$($(DATE_FROM_FILE) +%m%d%H%M)
-  else
-    BF_BUILD_NUMBER := $(file <$(BUILD_NUMBER_FILE))
-  endif
-  BUILD_FINGERPRINT := $(PRODUCT_BRAND)/$(TARGET_PRODUCT)/$(TARGET_DEVICE):$(PLATFORM_VERSION)/$(BUILD_ID)/$(BF_BUILD_NUMBER):$(TARGET_BUILD_VARIANT)/$(BUILD_VERSION_TAGS)
+  BUILD_FINGERPRINT := $(PRODUCT_BRAND)/$(TARGET_PRODUCT)/$(TARGET_DEVICE):$(PLATFORM_VERSION)/$(BUILD_ID)/$(BUILD_NUMBER_FROM_FILE):$(TARGET_BUILD_VARIANT)/$(BUILD_VERSION_TAGS)
 endif
-# unset it for safety.
-BF_BUILD_NUMBER :=
 
 BUILD_FINGERPRINT_FILE := $(PRODUCT_OUT)/build_fingerprint.txt
 ifneq (,$(shell mkdir -p $(PRODUCT_OUT) && echo $(BUILD_FINGERPRINT) >$(BUILD_FINGERPRINT_FILE) && grep " " $(BUILD_FINGERPRINT_FILE)))
@@ -207,6 +202,9 @@ ifeq (,$(strip $(BUILD_THUMBPRINT)))
 endif
 
 BUILD_THUMBPRINT_FILE := $(PRODUCT_OUT)/build_thumbprint.txt
+ifeq ($(strip $(HAS_BUILD_NUMBER)),true)
+$(BUILD_THUMBPRINT_FILE): $(BUILD_NUMBER_FILE)
+endif
 ifneq (,$(shell mkdir -p $(PRODUCT_OUT) && echo $(BUILD_THUMBPRINT) >$(BUILD_THUMBPRINT_FILE) && grep " " $(BUILD_THUMBPRINT_FILE)))
   $(error BUILD_THUMBPRINT cannot contain spaces: "$(file <$(BUILD_THUMBPRINT_FILE))")
 endif
@@ -271,7 +269,11 @@ $(strip $(subst _,-, $(firstword $(1))))
 endef
 
 gen_from_buildinfo_sh := $(call intermediates-dir-for,PACKAGING,system_build_prop)/buildinfo.prop
-$(gen_from_buildinfo_sh): $(INTERNAL_BUILD_ID_MAKEFILE) $(API_FINGERPRINT) | $(BUILD_DATETIME_FILE) $(BUILD_NUMBER_FILE)
+
+ifeq ($(strip $(HAS_BUILD_NUMBER)),true)
+$(gen_from_buildinfo_sh): $(BUILD_NUMBER_FILE)
+endif
+$(gen_from_buildinfo_sh): $(INTERNAL_BUILD_ID_MAKEFILE) $(API_FINGERPRINT) $(BUILD_HOSTNAME_FILE) | $(BUILD_DATETIME_FILE)
 	$(hide) TARGET_BUILD_TYPE="$(TARGET_BUILD_VARIANT)" \
 	        TARGET_BUILD_FLAVOR="$(TARGET_BUILD_FLAVOR)" \
 	        TARGET_DEVICE="$(TARGET_DEVICE)" \
@@ -283,7 +285,7 @@ $(gen_from_buildinfo_sh): $(INTERNAL_BUILD_ID_MAKEFILE) $(API_FINGERPRINT) | $(B
 	        BUILD_DISPLAY_ID="$(BUILD_DISPLAY_ID)" \
 	        DATE="$(DATE_FROM_FILE)" \
 	        BUILD_USERNAME="$(BUILD_USERNAME)" \
-	        BUILD_HOSTNAME="$(BUILD_HOSTNAME)" \
+	        BUILD_HOSTNAME="$(BUILD_HOSTNAME_FROM_FILE)" \
 	        BUILD_NUMBER="$(BUILD_NUMBER_FROM_FILE)" \
 	        BOARD_USE_VBMETA_DIGTEST_IN_FINGERPRINT="$(BOARD_USE_VBMETA_DIGTEST_IN_FINGERPRINT)" \
 	        PLATFORM_VERSION="$(PLATFORM_VERSION)" \
